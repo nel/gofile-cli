@@ -3,7 +3,7 @@
 [![Test](https://github.com/nel/gofile-cli/actions/workflows/test.yml/badge.svg)](https://github.com/nel/gofile-cli/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A lightweight Bash CLI for uploading one or more files to a shared [Gofile](https://gofile.io) folder.
+A lightweight command-line tool for uploading one or more files to a shared [Gofile](https://gofile.io) folder. It is implemented in Bash and works normally when called from Bash, Zsh, and other POSIX-style interactive shells.
 
 - Upload arguments, shell globs, or paths from standard input
 - Group every upload into a single shareable folder
@@ -13,8 +13,10 @@ A lightweight Bash CLI for uploading one or more files to a shared [Gofile](http
 
 ## Requirements
 
-- Bash 3.2 or later
+- Bash 3.2 or later as the script runtime
 - `curl`
+
+You do not need to use Bash as your interactive shell. Running `gofile` from Zsh works because the executable's `#!/usr/bin/env bash` shebang starts Bash automatically. The command accepts ordinary paths, globs expanded by the calling shell, and newline-separated paths over standard input. It is tested when invoked from both Bash and Zsh.
 
 ## Installation
 
