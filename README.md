@@ -1,6 +1,7 @@
 # Gofile CLI
 
 [![Test](https://github.com/nel/gofile-cli/actions/workflows/test.yml/badge.svg)](https://github.com/nel/gofile-cli/actions/workflows/test.yml)
+[![Integration](https://github.com/nel/gofile-cli/actions/workflows/integration.yml/badge.svg)](https://github.com/nel/gofile-cli/actions/workflows/integration.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A lightweight Bash CLI for uploading one or more files to a shared [Gofile](https://gofile.io) folder.
@@ -18,15 +19,17 @@ A lightweight Bash CLI for uploading one or more files to a shared [Gofile](http
 
 ## Installation
 
-Clone the repository and install the executable somewhere on your `PATH`:
+Download the latest version directly from GitHub:
 
 ```sh
-git clone https://github.com/nel/gofile-cli.git
-cd gofile-cli
-install -m 755 gofile ~/.bin/gofile
+mkdir -p ~/.bin
+curl -fsSL https://raw.githubusercontent.com/nel/gofile-cli/main/gofile -o ~/.bin/gofile
+chmod 755 ~/.bin/gofile
 ```
 
 Ensure `~/.bin` is included in your `PATH`.
+
+To inspect or contribute to the source instead, clone the repository and run the executable from the checkout.
 
 ## Usage
 
@@ -52,10 +55,11 @@ The command creates a temporary Gofile guest account for each run. It uploads th
 
 ```sh
 ./tests/test_gofile.sh
-shellcheck gofile tests/test_gofile.sh
+./tests/test_integration.sh
+shellcheck gofile tests/*.sh
 ```
 
-The tests mock `curl`, so they perform no network requests and upload no files. GitHub Actions runs the test suite and ShellCheck on every push and pull request.
+The unit test mocks `curl` and runs on every push and pull request. A separate integration test uploads two tiny files to Gofile every Monday and can also be started manually from GitHub Actions. Using two files ensures the live test covers guest authentication and folder reuse, including the API behavior that originally motivated this project.
 
 ## License
 

@@ -1,13 +1,18 @@
 name: Test
+
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: ShellCheck
-        run: shellcheck gofile tests/test_gofile.sh
+        run: shellcheck gofile tests/*.sh
       - name: Tests
         run: ./tests/test_gofile.sh
