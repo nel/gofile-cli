@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -u -o pipefail
+
+QUIET=0
+usage() { echo "usage: gofile [-q] [file ...]" >&2; exit 2; }
+while getopts ':qh' opt; do
+  case $opt in q) QUIET=1 ;; h|*) usage ;; esac
+done
+shift $((OPTIND - 1))
+log() { (( QUIET )) || echo "$@" >&2; }
+json_string() { local key=$1; sed -n 's/.*"'"$key"'":"\([^"]*\)".*/\1/p'; }
+
+files=("$@")
+if [[ ! -t 0 ]]; then
+  while IFS= read -r line; do [[ -n $line ]] && files+=("$line"); done
+fi
+(( ${#files[@]} )) || usage
+
+if (( QUIET )); then progress=-s; else progress=--progress-bar; fi
+endpoint=${GOFILE_UPLOAD_ENDPOINT:-https://upload.gofile.io/uploadfile}
+accounts_endpoint=${GOFILE_ACCOUNTS_ENDPOINT:-https://api.gofile.io/accounts}
+fails=0 successes=0 folder_id="" folder_url=""
+summary_files=()
+
+account_resp=$(curl --disable -sS --show-error --fail-with-body -X POST "$accounts_endpoint") || {
+  echo "FAILED to create Gofile guest account" >&2; exit 1;
+}
+guest_token=$(printf '%s' "$account_resp" | json_string token)
+if [[ -z $guest_token ]]; then
+  echo "FAILED to create Gofile guest account: unexpected response" >&2; exit 1
+fi
+
+for f in "${files[@]}"; do
+  if [[ ! -f $f ]]; then
+    echo "skip (not a file): $f" >&2; ((fails++)) || true; continue
+  fi
+  size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f")
+  log "uploading $f ($((size/1024/1024)) MiB)..."
+  curl_args=(--disable "$progress" --show-error --fail-with-body -H "Authorization: Bearer $guest_token")
+  [[ -n $folder_id ]] && curl_args+=(-F "folderId=$folder_id")
+  resp=$(curl "${curl_args[@]}" -F "file=@$f" "$endpoint") || {
+    echo "FAILED $f: $(printf '%s' "$resp" | head -c 200)" >&2
+    ((fails++)) || true; continue
+  }
+  status=$(printf '%s' "$resp" | json_string status)
+  url=$(printf '%s' "$resp" | json_string downloadPage)
+  parent=$(printf '%s' "$resp" | json_string parentFolder)
+  token=$(printf '%s' "$resp" | json_string guestToken)
+  if [[ $status == ok && -n $url && -n $parent ]]; then
+    [[ -z $folder_url ]] && folder_url=$url
+    [[ -z $folder_id ]] && folder_id=$parent
+    [[ -n $token ]] && guest_token=$token
+    ((successes++)) || true; summary_files+=("$(basename "$f")")
+  else
+    echo "FAILED $f (unexpected response): $(printf '%s' "$resp" | head -c 200)" >&2
+    ((fails++)) || true
+  fi
+done
+
+[[ -n $folder_url ]] && printf '%s\n' "$folder_url"
+if (( ! QUIET && successes > 1 )); then
+  echo >&2; echo "Uploaded $successes files" >&2; echo "URL: $folder_url" >&2
+fi
+(( fails > 125 )) && fails=125
+exit "$fails"
