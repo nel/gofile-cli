@@ -50,7 +50,7 @@ MOCK
   [[ $output == https://gofile.io/d/test ]]
   [[ -s $OPEN_LOG ]]
   compose_url=$(tail -n 1 "$OPEN_LOG")
-  [[ $compose_url == mailto:26verol%40seznam.cz\\?* ]]
+  [[ $compose_url == "mailto:26verol%40seznam.cz?"* ]]
   [[ $compose_url == *'subject=The%20Show%20Name%20%E2%80%94%20S01E01%2C%20S01E02'* ]]
   [[ $compose_url == *'body=https%3A%2F%2Fgofile.io%2Fd%2Ftest'* ]]
   echo "ok: mailto draft uses the configured recipient, clean subject, and folder URL"
@@ -67,7 +67,7 @@ CONFIG
     "$TMP/The-Show_Name.S01E01.1080p.mkv" \
     "$TMP/The-Show_Name.S01E02.1080p.mkv" >/dev/null
   compose_url=$(tail -n 1 "$OPEN_LOG")
-  [[ $compose_url == https://webmail.example/compose\\?* ]]
+  [[ $compose_url == "https://webmail.example/compose?"* ]]
   [[ $compose_url == *'recipient=from-config%40example.com'* ]]
   [[ $compose_url == *'title=The%20Show%20Name%20%E2%80%94%20Season%201'* ]]
   [[ $compose_url == *'content=https%3A%2F%2Fgofile.io%2Fd%2Ftest'* ]]
