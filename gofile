@@ -2,13 +2,198 @@
 set -u -o pipefail
 
 QUIET=0
-usage() { echo "usage: gofile [-q] [file ...]" >&2; exit 2; }
-while getopts ':qh' opt; do
-  case $opt in q) QUIET=1 ;; h|*) usage ;; esac
+COMPOSE_EMAIL=1
+usage() { echo "usage: gofile [-nq] [file ...]" >&2; exit 2; }
+while getopts ':nqh' opt; do
+  case $opt in
+    n) COMPOSE_EMAIL=0 ;;
+    q) QUIET=1 ;;
+    h|*) usage ;;
+  esac
 done
 shift $((OPTIND - 1))
 log() { (( QUIET )) || echo "$@" >&2; }
 json_string() { local key=$1; sed -n 's/.*"'"$key"'":"\([^"]*\)".*/\1/p'; }
+trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+
+config_email_to=""
+config_email_compose_url=""
+config_episode_list_limit=6
+config_file=${GOFILE_CONFIG:-${HOME:-}/.gofile}
+if [[ -n $config_file && -f $config_file ]]; then
+  while IFS='=' read -r key value; do
+    key=$(trim "$key")
+    [[ -z $key || $key == \#* ]] && continue
+    value=$(trim "$value")
+    if [[ ${#value} -ge 2 ]]; then
+      if [[ $value == \"*\" && $value == *\" ]] || [[ $value == \'*\' && $value == *\' ]]; then
+        value=${value:1:${#value}-2}
+      fi
+    fi
+    case $key in
+      EMAIL_TO) config_email_to=$value ;;
+      EMAIL_COMPOSE_URL) config_email_compose_url=$value ;;
+      EPISODE_LIST_LIMIT) config_episode_list_limit=$value ;;
+    esac
+  done < "$config_file"
+fi
+
+email_to=$config_email_to
+email_compose_url=$config_email_compose_url
+episode_list_limit=$config_episode_list_limit
+[[ ${GOFILE_EMAIL_TO+x} ]] && email_to=$GOFILE_EMAIL_TO
+[[ ${GOFILE_EMAIL_COMPOSE_URL+x} ]] && email_compose_url=$GOFILE_EMAIL_COMPOSE_URL
+[[ ${GOFILE_EPISODE_LIST_LIMIT+x} ]] && episode_list_limit=$GOFILE_EPISODE_LIST_LIMIT
+if [[ ! $episode_list_limit =~ ^[1-9][0-9]*$ ]]; then
+  echo "warning: EPISODE_LIST_LIMIT must be a positive integer; using 6" >&2
+  episode_list_limit=6
+fi
+
+url_encode() {
+  local LC_ALL=C value=$1 encoded="" char hex i
+  for ((i = 0; i < ${#value}; i++)); do
+    char=${value:i:1}
+    case $char in
+      [a-zA-Z0-9.~_-]) encoded+=$char ;;
+      ' ') encoded+='%20' ;;
+      *)
+        printf -v hex '%02X' "'$char"
+        encoded+="%$hex"
+        ;;
+    esac
+  done
+  printf '%s' "$encoded"
+}
+
+tidy_title() {
+  printf '%s' "$1" |
+    sed -E 's/^[[:space:]-]+//; s/[[:space:]-]+$//; s/[[:space:]]+/ /g'
+}
+
+clean_title() {
+  local filename stem normalized title year
+  filename=${1##*/}
+  stem=${filename%.*}
+  normalized=$(printf '%s' "$stem" |
+    sed -E 's/[-._]+/ /g; s/^\[[^]]+\][[:space:]]*//; s/[[:space:]]+/ /g')
+
+  if [[ $normalized =~ [Ss][0-9]{1,2}[Ee][0-9]{1,3} ]]; then
+    title=$(printf '%s' "$normalized" |
+      sed -E 's/[[:space:]-]*[Ss][0-9]{1,2}[Ee][0-9]{1,3}.*$//')
+    tidy_title "$title"
+    return
+  fi
+
+  year=$(printf '%s' "$normalized" | grep -Eo '(19|20)[0-9]{2}' | tail -n 1)
+  if [[ -n $year ]]; then
+    title=$(printf '%s' "$normalized" |
+      sed -E "s/[[:space:](]*${year}[)]?.*$//")
+    title=$(tidy_title "$title")
+    if [[ -n $title ]]; then
+      printf '%s (%s)' "$title" "$year"
+      return
+    fi
+  fi
+
+  title=$(printf '%s' "$normalized" |
+    sed -E 's/[[:space:]]+(2160[pP]|1080[pP]|720[pP]|480[pP]|[Ww][Ee][Bb][-. ]*([Dd][Ll]|[Rr][Ii][Pp])|[Bb][Ll][Uu][Rr][Aa][Yy]|[Bb][Dd][Rr][Ii][Pp]|[Dd][Vv][Dd][Rr][Ii][Pp]|[Rr][Ee][Mm][Uu][Xx]|[Hh][Dd][Rr]|[Xx]26[45]|[Hh][.]?26[45]|[Hh][Ee][Vv][Cc]|[Aa][Vv]1).*//')
+  tidy_title "$title"
+}
+
+normalize_episode() {
+  local token season episode
+  token=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')
+  season=${token#S}
+  season=${season%%E*}
+  episode=${token#*E}
+  printf 'S%02dE%02d' "$((10#$season))" "$((10#$episode))"
+}
+
+email_subject() {
+  local title token normalized existing duplicate season season_number joined=""
+  local -a episodes=() seasons=()
+  title=$(clean_title "${summary_files[0]}")
+  [[ -n $title ]] || title="Gofile upload"
+
+  for filename in "${summary_files[@]}"; do
+    for token in $(printf '%s' "$filename" | grep -Eo '[Ss][0-9]{1,2}[Ee][0-9]{1,3}'); do
+      normalized=$(normalize_episode "$token")
+      duplicate=0
+      if (( ${#episodes[@]} )); then
+        for existing in "${episodes[@]}"; do
+          [[ $existing == "$normalized" ]] && duplicate=1
+        done
+      fi
+      (( duplicate )) || episodes+=("$normalized")
+    done
+  done
+
+  if (( ${#episodes[@]} == 0 )); then
+    printf '%s' "$title"
+  elif (( ${#episodes[@]} <= episode_list_limit )); then
+    for token in "${episodes[@]}"; do
+      [[ -n $joined ]] && joined+=", "
+      joined+=$token
+    done
+    printf '%s — %s' "$title" "$joined"
+  else
+    for token in "${episodes[@]}"; do
+      season=${token%%E*}
+      duplicate=0
+      if (( ${#seasons[@]} )); then
+        for existing in "${seasons[@]}"; do
+          [[ $existing == "$season" ]] && duplicate=1
+        done
+      fi
+      (( duplicate )) || seasons+=("$season")
+    done
+    for season in "${seasons[@]}"; do
+      season_number=${season#S}
+      season_number=$((10#$season_number))
+      [[ -n $joined ]] && joined+=", "
+      joined+="$season_number"
+    done
+    if (( ${#seasons[@]} == 1 )); then
+      printf '%s — Season %s' "$title" "$joined"
+    else
+      printf '%s — Seasons %s' "$title" "$joined"
+    fi
+  fi
+}
+
+compose_email() {
+  local subject=$1 body=$2 compose_url opener=""
+  local encoded_to encoded_subject encoded_body
+  encoded_to=$(url_encode "$email_to")
+  encoded_subject=$(url_encode "$subject")
+  encoded_body=$(url_encode "$body")
+
+  if [[ -n $email_compose_url ]]; then
+    compose_url=$email_compose_url
+    compose_url=${compose_url//\{to\}/$encoded_to}
+    compose_url=${compose_url//\{subject\}/$encoded_subject}
+    compose_url=${compose_url//\{body\}/$encoded_body}
+  else
+    compose_url="mailto:$encoded_to?subject=$encoded_subject&body=$encoded_body"
+  fi
+
+  if [[ -n ${GOFILE_OPEN_COMMAND:-} ]] && command -v "$GOFILE_OPEN_COMMAND" >/dev/null 2>&1; then
+    opener=$GOFILE_OPEN_COMMAND
+  elif command -v open >/dev/null 2>&1; then
+    opener=open
+  elif command -v xdg-open >/dev/null 2>&1; then
+    opener=xdg-open
+  else
+    echo "warning: no browser opener found; email was not opened" >&2
+    return
+  fi
+
+  if "$opener" "$compose_url" >/dev/null 2>&1; then
+    log "Opened email draft for $email_to"
+  else
+    echo "warning: could not open email draft for $email_to" >&2
+  fi
+}
 
 files=("$@")
 if [[ ! -t 0 ]]; then
@@ -58,6 +243,9 @@ for f in "${files[@]}"; do
 done
 
 [[ -n $folder_url ]] && printf '%s\n' "$folder_url"
+if [[ -n $folder_url && -n $email_to ]] && (( COMPOSE_EMAIL )); then
+  compose_email "$(email_subject)" "$folder_url"
+fi
 if (( ! QUIET && successes > 1 )); then
   echo >&2; echo "Uploaded $successes files" >&2; echo "URL: $folder_url" >&2
 fi

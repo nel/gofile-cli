@@ -9,6 +9,7 @@ A lightweight command-line tool for uploading one or more files to a shared [Gof
 - Group every upload into a single shareable folder
 - Keep stdout pipe-safe by writing only the final URL there
 - Show progress and status information on stderr
+- Open a pre-addressed email draft containing the link
 - Work without a registered Gofile account
 
 ## Requirements
@@ -35,7 +36,7 @@ To inspect or contribute to the source instead, clone the repository and run the
 ## Usage
 
 ```text
-gofile [-q] [file ...]
+gofile [-nq] [file ...]
 ```
 
 Examples:
@@ -44,13 +45,42 @@ Examples:
 gofile file1.mkv file2.mkv
 ls *.mkv | gofile
 gofile -q *.mkv | pbcopy
+gofile -n movie.mkv
 ```
 
 Use `-q` to hide progress and status output. The resulting folder URL is always written to stdout, making it safe to redirect or pipe into another command.
 
+### Email drafts
+
+To open a draft in the system's default mail application after a successful upload, create `~/.gofile`:
+
+```ini
+EMAIL_TO=someone@example.com
+EPISODE_LIST_LIMIT=6
+```
+
+This uses the standard `mailto:` URL scheme. Its body contains only the Gofile link. The subject is derived from the first successfully uploaded filename:
+
+- `The-Show_Name.S01E03.1080p.WEB-DL.mkv` becomes `The Show Name — S01E03`.
+- Uploading up to `EPISODE_LIST_LIMIT` distinct episodes lists every episode number.
+- Larger batches are summarized as `The Show — Season 1` or `The Show — Seasons 1, 2`.
+- `Some.Movie.2025.2160p.mkv` becomes `Some Movie (2025)`.
+
+For browser-based webmail, provide a compose URL template. The `{to}`, `{subject}`, and `{body}` placeholders are replaced with URL-encoded values. For example, Gmail can be configured without making it the command's default:
+
+```ini
+EMAIL_TO=someone@example.com
+EMAIL_COMPOSE_URL=https://mail.google.com/mail/?view=cm&fs=1&to={to}&su={subject}&body={body}
+EPISODE_LIST_LIMIT=6
+```
+
+This URL is opened in the default browser, so it does not invoke Apple Mail. Other webmail services can be used if they expose an equivalent compose URL. There is no common standard for webmail compose URLs, so consult the service's documentation and adapt the template parameters as needed.
+
+Use `-n` to skip opening a draft for one upload. Environment variables named `GOFILE_EMAIL_TO`, `GOFILE_EMAIL_COMPOSE_URL`, and `GOFILE_EPISODE_LIST_LIMIT` override the corresponding config values. Set `GOFILE_CONFIG` to use a config file in another location.
+
 ## How it works
 
-The command creates a temporary Gofile guest account for each run. It uploads the first file into a new folder, then reuses that authenticated folder for all remaining files. Guest uploads are subject to Gofile's storage and retention policies.
+The command creates a temporary Gofile guest account for each run. It uploads the first file into a new folder, then reuses that authenticated folder for all remaining files. If email drafting is configured, it URL-encodes the recipient, cleaned subject, and link, inserts them into either a standard `mailto:` URL or the configured webmail template, and asks the operating system to open it. Guest uploads are subject to Gofile's storage and retention policies.
 
 ## Development
 
