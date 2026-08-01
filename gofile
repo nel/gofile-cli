@@ -58,6 +58,8 @@ url_encode() {
       ' ') encoded+='%20' ;;
       *)
         printf -v hex '%02X' "'$char"
+        # macOS Bash 3.2 sign-extends bytes above 0x7F.
+        hex=${hex:${#hex}-2}
         encoded+="%$hex"
         ;;
     esac

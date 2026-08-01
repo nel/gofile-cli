@@ -82,6 +82,18 @@ CONFIG
   [[ $compose_url == *'subject=Some%20Movie%20%282025%29'* ]]
   echo "ok: movie release metadata is removed from the subject"
 
+  printf episode > "$TMP/Paměť_S03E05.mkv"
+  : > "$OPEN_LOG"
+  GOFILE_EMAIL_TO=26verol@seznam.cz \
+    GOFILE_OPEN_COMMAND=gofile-test-open \
+    "$ROOT/gofile" -q "$TMP/Paměť_S03E05.mkv" >/dev/null
+  compose_url=$(tail -n 1 "$OPEN_LOG")
+  [[ $compose_url == *'subject=Pam%C4%9B%C5%A5%20-%20S03E05'* ]] || {
+    echo "FAILED: Unicode title was not URL-encoded correctly" >&2
+    return 1
+  }
+  echo "ok: Unicode title is URL-encoded byte by byte"
+
   : > "$OPEN_LOG"
   GOFILE_EMAIL_TO=26verol@seznam.cz \
     GOFILE_OPEN_COMMAND=gofile-test-open \
