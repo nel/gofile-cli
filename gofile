@@ -135,7 +135,7 @@ email_subject() {
       [[ -n $joined ]] && joined+=", "
       joined+=$token
     done
-    printf '%s — %s' "$title" "$joined"
+    printf '%s - %s' "$title" "$joined"
   else
     for token in "${episodes[@]}"; do
       season=${token%%E*}
@@ -154,9 +154,9 @@ email_subject() {
       joined+="$season_number"
     done
     if (( ${#seasons[@]} == 1 )); then
-      printf '%s — Season %s' "$title" "$joined"
+      printf '%s - Season %s' "$title" "$joined"
     else
-      printf '%s — Seasons %s' "$title" "$joined"
+      printf '%s - Seasons %s' "$title" "$joined"
     fi
   fi
 }

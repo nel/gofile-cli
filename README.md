@@ -61,9 +61,9 @@ EPISODE_LIST_LIMIT=6
 
 This uses the standard `mailto:` URL scheme. Its body contains only the Gofile link. The subject is derived from the first successfully uploaded filename:
 
-- `The-Show_Name.S01E03.1080p.WEB-DL.mkv` becomes `The Show Name — S01E03`.
+- `The-Show_Name.S01E03.1080p.WEB-DL.mkv` becomes `The Show Name - S01E03`.
 - Uploading up to `EPISODE_LIST_LIMIT` distinct episodes lists every episode number.
-- Larger batches are summarized as `The Show — Season 1` or `The Show — Seasons 1, 2`.
+- Larger batches are summarized as `The Show - Season 1` or `The Show - Seasons 1, 2`.
 - `Some.Movie.2025.2160p.mkv` becomes `Some Movie (2025)`.
 
 For browser-based webmail, provide a compose URL template. The `{to}`, `{subject}`, and `{body}` placeholders are replaced with URL-encoded values. For example, Gmail can be configured without making it the command's default:
